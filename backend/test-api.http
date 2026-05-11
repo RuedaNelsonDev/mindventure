@@ -1,0 +1,253 @@
+### MindVenture API - Suite de pruebas de autenticacion
+### Plugin requerido: REST Client (humao.rest-client) en VS Code
+### Antes de ejecutar: arranca el servidor con `npm run dev` desde /backend
+### Flujo recomendado: ejecutar las peticiones en orden. Tras la #3 (login),
+### copia el `data.token` de la respuesta y pegalo en @authToken (abajo) para
+### que las peticiones 4 y 5 lo usen automaticamente via {{authToken}}.
+
+@baseUrl = http://localhost:5000
+@authToken = eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiI2YTAyNTVmNTI3M2MzMDBkY2Y1MzZiNGEiLCJpYXQiOjE3Nzg1Mzc5NzMsImV4cCI6MTc3OTE0Mjc3M30.o7mgxaFM0PJL6KkqHbmvdmJlR-lGFb-wD0fsoPelazg
+@consultaId = PEGA_AQUI_EL_ID_DE_UNA_CONSULTA
+@vrSesionId = PEGA_AQUI_EL_ID_DE_UNA_SESION_VR
+@recursoId = PEGA_AQUI_EL_ID_DE_UN_RECURSO
+
+
+### 1. Health check
+### Esperado: 200 OK con { status: "ok", timestamp: "..." }
+GET {{baseUrl}}/api/health
+
+
+### 2. Registro de usuario nuevo
+### Esperado: 201 Created con { success: true, data: { user, token }, mensaje: "Usuario registrado correctamente" }
+POST {{baseUrl}}/api/auth/registrar
+Content-Type: application/json
+
+{
+  "nombre": "Nelson Prueba",
+  "email": "nelson.test@mindventure.co",
+  "password": "Prueba1234",
+  "consentimientoDatos": true
+}
+
+
+### 3. Login con las credenciales recien creadas
+### Esperado: 200 OK con { success: true, data: { user, token } }
+### >>> COPIA el valor de `data.token` y pegalo arriba en @authToken <<<
+POST {{baseUrl}}/api/auth/login
+Content-Type: application/json
+
+{
+  "email": "nelson.test@mindventure.co",
+  "password": "Prueba1234"
+}
+
+
+### 4. Obtener perfil del usuario autenticado
+### Esperado: 200 OK con { success: true, data: { user } } y sin campo password
+GET {{baseUrl}}/api/auth/perfil
+Authorization: Bearer {{authToken}}
+
+
+### 5. Actualizar perfil: cambiar el nombre a "Nelson Rueda"
+### Esperado: 200 OK con el usuario actualizado y mensaje "Perfil actualizado correctamente"
+PATCH {{baseUrl}}/api/auth/perfil
+Authorization: Bearer {{authToken}}
+Content-Type: application/json
+
+{
+  "nombre": "Nelson Rueda"
+}
+
+
+### 6. Intento de registro DUPLICADO (mismo email que en #2)
+### Esperado: 409 Conflict con mensaje "Este email ya esta registrado"
+POST {{baseUrl}}/api/auth/registrar
+Content-Type: application/json
+
+{
+  "nombre": "Otro Usuario",
+  "email": "nelson.test@mindventure.co",
+  "password": "OtroPass1234",
+  "consentimientoDatos": true
+}
+
+
+### 7. Login con password INCORRECTA
+### Esperado: 401 Unauthorized con mensaje "Credenciales invalidas"
+POST {{baseUrl}}/api/auth/login
+Content-Type: application/json
+
+{
+  "email": "nelson.test@mindventure.co",
+  "password": "PasswordIncorrecta1"
+}
+
+
+### 8. Acceso a /perfil SIN token de autenticacion
+### Esperado: 401 Unauthorized con mensaje "Token no proporcionado"
+GET {{baseUrl}}/api/auth/perfil
+
+
+### 9. Registro con consentimientoDatos = false
+### Esperado: 422 Unprocessable Entity con detalles del validador
+### (el validador custom rechaza valores distintos de true / "true")
+POST {{baseUrl}}/api/auth/registrar
+Content-Type: application/json
+
+{
+  "nombre": "Sin Consentimiento",
+  "email": "sin.consentimiento@mindventure.co",
+  "password": "Prueba1234",
+  "consentimientoDatos": false
+}
+
+
+# =======================================================================
+# CHATBOT - Integracion DeepSeek + deteccion de crisis
+# Todas las peticiones requieren {{authToken}} (ya definido arriba).
+# =======================================================================
+
+
+### 10. Enviar pregunta normal al chatbot
+### Esperado: 201 Created con consulta. alertaCrisis = false, respuesta de la IA.
+POST {{baseUrl}}/api/chat/enviar
+Authorization: Bearer {{authToken}}
+Content-Type: application/json
+
+{
+  "pregunta": "Me siento muy ansioso por mi trabajo, no se que hacer"
+}
+
+
+### 11. Enviar pregunta con eufemismo de crisis
+### Esperado: 201 Created con alertaCrisis = true y respuesta + sufijo "🆘 Linea 192...".
+### La frase "seria mejor no estar aqui" contiene "no estar aqui", una de las 29
+### frases del diccionario de crisis (utils/deteccionCrisis.js). Disparara la
+### alerta porque includes() encuentra el substring en el texto normalizado.
+POST {{baseUrl}}/api/chat/enviar
+Authorization: Bearer {{authToken}}
+Content-Type: application/json
+
+{
+  "pregunta": "A veces pienso que seria mejor no estar aqui"
+}
+
+
+### 12. Listar historial (ultimas 50 consultas, ordenadas DESC por fecha)
+GET {{baseUrl}}/api/chat/historial
+Authorization: Bearer {{authToken}}
+
+
+### 13. Obtener consulta por ID
+### Antes de ejecutar: copia un `_id` de #10/#11/#12 y pegalo arriba en @consultaId.
+GET {{baseUrl}}/api/chat/{{consultaId}}
+Authorization: Bearer {{authToken}}
+
+
+### 14. Eliminar consulta (Ley 1581 - derecho de supresion)
+### Esperado: 200 OK con mensaje "Consulta eliminada". Verifica con #13 que ya no exista.
+DELETE {{baseUrl}}/api/chat/{{consultaId}}
+Authorization: Bearer {{authToken}}
+
+
+# =======================================================================
+# VR - Sesiones de realidad virtual (todas autenticadas)
+# =======================================================================
+
+
+### 15. Iniciar sesion VR (escena "playa", nivel de estres antes = 7)
+### Esperado: 201 Created. Copia el `_id` de la sesion y pegalo en @vrSesionId.
+POST {{baseUrl}}/api/vr/iniciar
+Authorization: Bearer {{authToken}}
+Content-Type: application/json
+
+{
+  "tipoEscena": "playa",
+  "nivelEstresAntes": 7
+}
+
+
+### 16. Finalizar sesion VR (estres despues = 4, duracion = 300s)
+### Esperado: 200 OK con sesion.completada = true y reduccion de estres registrada.
+PATCH {{baseUrl}}/api/vr/{{vrSesionId}}/finalizar
+Authorization: Bearer {{authToken}}
+Content-Type: application/json
+
+{
+  "nivelEstresDespues": 4,
+  "duracionSegundos": 300,
+  "notas": "Me senti mas tranquilo despues de la sesion"
+}
+
+
+### 17. Listar sesiones VR del usuario (ultimas 50, DESC)
+GET {{baseUrl}}/api/vr/sesiones
+Authorization: Bearer {{authToken}}
+
+
+### 18. Estadisticas VR (totales, tiempo, reduccion promedio, escena top)
+GET {{baseUrl}}/api/vr/estadisticas
+Authorization: Bearer {{authToken}}
+
+
+# =======================================================================
+# MONITOREO EMOCIONAL (todas autenticadas)
+# =======================================================================
+
+
+### 19. Registrar estado de animo del dia ("bien")
+### El modelo asigna valorNumerico = 4 automaticamente (pre-validate hook).
+POST {{baseUrl}}/api/monitoreo/registros
+Authorization: Bearer {{authToken}}
+Content-Type: application/json
+
+{
+  "estadoAnimo": "bien",
+  "nota": "Dia productivo, me senti animado"
+}
+
+
+### 20. Obtener registro de HOY (zona horaria Colombia UTC-5)
+### Esperado: 200 OK con { registro: {...} } si ya registraste hoy, sino { registro: null }.
+GET {{baseUrl}}/api/monitoreo/hoy
+Authorization: Bearer {{authToken}}
+
+
+### 21. Listar ultimos 30 registros emocionales (DESC)
+GET {{baseUrl}}/api/monitoreo/registros
+Authorization: Bearer {{authToken}}
+
+
+### 22. Resumen emocional (promedios, tendencia, distribucion, racha)
+### Esperado: 200 OK con promedioSemana, promedioMes, tendencia, totalRegistros,
+### distribucionEstados (count por cada estado del ultimo mes) y diasConsecutivos.
+GET {{baseUrl}}/api/monitoreo/resumen
+Authorization: Bearer {{authToken}}
+
+
+# =======================================================================
+# RECURSOS PSICOEDUCATIVOS (publicos, sin auth)
+# Nota: requiere haber sembrado recursos. Si la BD esta vacia, ejecuta primero
+# el seeder (pendiente de implementar: scripts/seedRecursos.js).
+# =======================================================================
+
+
+### 23. Listar todos los recursos publicados
+GET {{baseUrl}}/api/recursos
+
+
+### 24. Listar recursos filtrando por categoria
+GET {{baseUrl}}/api/recursos?categoria=ansiedad
+
+
+### 25. Listar recursos con busqueda libre en titulo y contenido
+GET {{baseUrl}}/api/recursos?buscar=respiracion
+
+
+### 26. Obtener 3 recursos aleatorios ($sample de MongoDB)
+GET {{baseUrl}}/api/recursos/sugeridos
+
+
+### 27. Obtener un recurso por ID
+### Antes: ejecuta #23, copia un `_id` y pegalo arriba en @recursoId.
+GET {{baseUrl}}/api/recursos/{{recursoId}}
