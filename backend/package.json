@@ -10,6 +10,7 @@
     "dev": "nodemon src/server.js",
     "start": "node src/server.js",
     "seed": "node src/scripts/seedRecursos.js",
+    "seed:monitoreo": "node src/scripts/seedMonitoreo.js",
     "test:crisis": "node src/scripts/probarDeteccion.js"
   },
   "keywords": [
